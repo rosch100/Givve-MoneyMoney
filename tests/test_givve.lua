@@ -262,4 +262,10 @@ local empty = parseTransactionsFromGroupsPayload({ data = {} }, nil)
 assertEq(#empty, 0, "tx.empty")
 assertEq(parseBalanceFromVoucher({}), nil, "balance.missing")
 
+local txUrl = transactionGroupsUrl("voucher-test-1", nil)
+assertEq(txUrl:find("page%5Bnumber%5D=1", 1, true) ~= nil, true, "txUrl.pagination")
+assertEq(txUrl:find("skip_meta_totals=true", 1, true) ~= nil, true, "txUrl.skipMeta")
+local txUrlSince = transactionGroupsUrl("voucher-test-1", os.time({ year = 2026, month = 8, day = 6, hour = 11, min = 54, sec = 3 }))
+assertEq(txUrlSince:find("filter%5Blatest_booked_at%5D", 1, true) ~= nil, true, "txUrl.sinceFilter")
+
 print("test_givve OK")

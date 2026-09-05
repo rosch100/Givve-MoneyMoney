@@ -564,8 +564,23 @@ function InitializeSession2(protocol, bankCode, step, credentials, interactive)
   return "Anmeldesitzung abgelaufen. Bitte erneut anmelden."
 end
 
-function transactionGroupsUrl(voucherId)
-  return CONSTANTS.vouchersUrl .. "/" .. voucherId .. "/transaction_groups"
+function isoTimestampForApi(unixTs)
+  if type(unixTs) ~= "number" then
+    return nil
+  end
+  return os.date("!%Y-%m-%dT%H:%M:%S.000", unixTs)
+end
+
+function transactionGroupsUrl(voucherId, sinceTimestamp)
+  local url = CONSTANTS.vouchersUrl
+    .. "/"
+    .. voucherId
+    .. "/transaction_groups?page%5Bnumber%5D=1&page%5Bsize%5D=250&skip_meta_totals=true"
+  local iso = isoTimestampForApi(sinceTimestamp)
+  if iso then
+    url = url .. "&filter%5Blatest_booked_at%5D%5B%24gte%5D=" .. MM.urlencode(iso)
+  end
+  return url
 end
 
 function ListAccounts(knownAccounts)
@@ -629,7 +644,7 @@ function RefreshAccount(account, since)
     return "givve Card: Saldo konnte nicht gelesen werden."
   end
 
-  local txUrl = transactionGroupsUrl(voucherId)
+  local txUrl = transactionGroupsUrl(voucherId, since)
   local txRaw = apiRequest("GET", txUrl, nil, session.accessToken)
   local txPayload = parseJson(txRaw)
   if not txPayload then

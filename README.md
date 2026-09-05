@@ -1,48 +1,43 @@
-# Givve Prepaid — MoneyMoney Extension
-Plugin Homepage: https://github.com/rosch100/Givve-MoneyMoney
-Bank/Portal: https://card.givve.com (API: https://www.givve.com)
-Version: **1.05**
-Status: E-Mail/Passwort + E-Mail-OTP (API); Saldo + Umsätze (Builtin-nah: name/purpose/valueDate); ein Konto pro Voucher
-Hub (gemeinsame Tools/Doku): https://github.com/rosch100/moneymoney-extensions
+# Givve Prepaid — MoneyMoney-Erweiterung
+
+Givve-Prepaid-Karten (Saldo und Umsätze) in MoneyMoney.
+
+Version: **1.00**
+Repository: https://github.com/rosch100/Givve-MoneyMoney
+Gemeinsame Infos: https://github.com/rosch100/moneymoney-extensions
 
 ## Installation
-Unsignierte Datei: [Givve Prepaid.lua](https://raw.githubusercontent.com/rosch100/Givve-MoneyMoney/main/Givve%20Prepaid.lua)
+
+Unsignierte Datei:
+[Givve Prepaid.lua](https://raw.githubusercontent.com/rosch100/Givve-MoneyMoney/main/Givve%20Prepaid.lua)
 
 Datei nach
 `~/Library/Containers/com.moneymoney-app.retail/Data/Library/Application Support/MoneyMoney/Extensions`
 **kopieren** (keine Hardlinks — die Sandbox lädt sie oft nicht), oder im Klon
-`./link_ext.sh` ausführen (legt eine echte Kopie an). Danach MoneyMoney neu starten.
+`./link_ext.sh` ausführen. Danach MoneyMoney neu starten.
 
 Unsignierte Plugins: MoneyMoney-**Beta**, Signaturprüfung unter
-*MoneyMoney → Einstellungen → Erweiterungen* **ausschalten**.
+*MoneyMoney → Einstellungen → Erweiterungen* ausschalten.
 
-In MoneyMoney: **Konto → Konto hinzufügen → Andere** (nicht IBAN/BLZ) →
-**Givve Prepaid** wählen. Plugin-Dateiname und Service-Name sind identisch
-(Title Case, Sibling-Konvention). Nicht „Givve Card“ — das ist MoneyMoney’s
-eingebaute Kreditkarte (wie „Amazon Bestellungen“ vs. „Amazon-Kreditkarte“).
-Benutzername = E-Mail, Passwort = Portal-Passwort. Bei OTP den Code aus der
-E-Mail eingeben.
+## Einrichten
 
-## Konten / Multi-Voucher
-Jeder Voucher (Prepaid-Karte) wird als eigenes Konto angelegt:
+*Konto hinzufügen* → *Andere* (nicht IBAN/BLZ) → **Givve Prepaid**.
 
-- Name: `givve` (eine Karte) bzw. `givve ****<last4>` (mehrere Karten)
-- Kontonummer (Übersicht): maskierte Kartennummer aus der API, z. B.
-  `521965******6363` (volle PAN liefert die API nicht)
+Nicht „Givve Card“ wählen — das ist MoneyMoney’s eingebaute Kreditkarte.
 
-Bestehende Konten mit alter Nummer `givve.<voucherId>` werden beim Abruf
-weiter erkannt; für die Anzeige-PAN Konto neu anlegen.
+Benutzername = E-Mail, Passwort = Portal-Passwort. Bei Nachfrage den Code aus
+der E-Mail eingeben.
 
-## Multi-Login
 Mehrere Portallogins: je einen Bankzugang mit eigener E-Mail anlegen.
-Sessions liegen in `LocalStorage.connectionsByAccount`.
 
-## Tests
-```sh
-python3 tests/test_conformance.py
-luajit tests/test_givve.lua
-```
-Aus dem Repo-Root ausführen.
+## Nutzung
+
+Jede Prepaid-Karte erscheint als eigenes Konto. Bei mehreren Karten stehen die
+letzten vier Ziffern im Namen.
+
+Ältere Konten mit anderer Nummernform werden weiter aktualisiert; für die
+maskierte Kartennummer in der Übersicht ggf. Konto neu anlegen.
 
 ## Lizenz
+
 MIT — siehe [LICENSE](LICENSE).

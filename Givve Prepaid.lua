@@ -1,26 +1,30 @@
 --
 -- Plugin Homepage: https://github.com/rosch100/Givve-MoneyMoney
--- Givve Card — MoneyMoney Web Banking Extension
+-- Givve Prepaid — MoneyMoney Web Banking Extension
 -- Portal: https://card.givve.com  API: https://www.givve.com
 -- Dokumentation: README.md (Hub: https://github.com/rosch100/moneymoney-extensions)
 -- API: https://moneymoney.app/api/webbanking/
 --
+-- Dateiname und services[] = "Givve Prepaid" (nicht "Givve Card": Kollision mit
+-- MoneyMoney's eingebauter Kreditkarte — analog Amazon Bestellungen vs. Amazon-Kreditkarte).
+--
 
 WebBanking{
-  version     = 1.00,
+  version     = 1.05,
   url         = "https://card.givve.com",
-  services    = {"Givve Card"},
-  description = "Givve Card - E-Mail/Passwort + E-Mail-OTP (Prepaid Benefit)"
+  services    = {"Givve Prepaid"},
+  description = "Givve Prepaid - E-Mail/Passwort + E-Mail-OTP (Benefit-Karte)"
 }
 
 local CONSTANTS = {
   baseUrl = "https://card.givve.com",
   authorizationsUrl = "https://www.givve.com/api/authorizations",
   vouchersUrl = "https://www.givve.com/api/voucher_owners/me/vouchers",
+  meUrl = "https://www.givve.com/api/voucher_owners/me",
   clientId = "givve-card-web",
   acceptVersion = "v2",
   allowedHosts = { "card.givve.com", "www.givve.com" },
-  serviceName = "Givve Card",
+  serviceName = "Givve Prepaid",
   userAgent = "givve Card/8.1.1 (web)",
   vouchersPageSize = 25,
 }
@@ -51,22 +55,6 @@ function normalizeAccountKey(raw)
   return normalizeEmail(raw)
 end
 
-function accountNumberForEmail(email)
-  local e = normalizeEmail(email)
-  if e == "" then
-    error("givve Card: E-Mail für Kontonummer fehlt")
-  end
-  return "givve." .. (e:gsub("@", "."))
-end
-
-function accountNameForEmail(email)
-  local e = normalizeEmail(email)
-  if e == "" then
-    error("givve Card: E-Mail für Kontoname fehlt")
-  end
-  return "Givve Card (" .. e .. ")"
-end
-
 function last4FromVoucher(voucher)
   if type(voucher) ~= "table" or type(voucher.number) ~= "string" then
     return nil
@@ -74,33 +62,109 @@ function last4FromVoucher(voucher)
   return voucher.number:match("(%d%d%d%d)%s*$")
 end
 
+-- Sichtte Kartennummer (API liefert maskierte PAN, z. B. 521965******6363).
 function accountNumberForVoucher(voucher)
-  if type(voucher) ~= "table" or type(voucher.id) ~= "string" or voucher.id == "" then
-    error("givve Card: Voucher-ID für Kontonummer fehlt")
+  if type(voucher) ~= "table" or type(voucher.number) ~= "string" or voucher.number == "" then
+    error("givve Card: Kartennummer für Kontonummer fehlt")
   end
-  return "givve." .. voucher.id
+  return voucher.number
 end
 
-function accountNameForVoucher(email, voucher)
-  local e = normalizeEmail(email)
+-- Ein Konto: "givve"; mehrere: "givve ****6363".
+function accountNameForVoucher(voucher, voucherCount)
+  local count = voucherCount or 1
+  if count <= 1 then
+    return "givve"
+  end
   local last4 = last4FromVoucher(voucher)
-  if last4 and e ~= "" then
-    return "Givve Card ****" .. last4 .. " (" .. e .. ")"
-  end
   if last4 then
-    return "Givve Card ****" .. last4
+    return "givve ****" .. last4
   end
-  if e ~= "" then
-    return "Givve Card (" .. e .. ")"
-  end
-  return "Givve Card"
+  return "givve"
 end
 
-function voucherIdFromAccountNumber(accountNumber)
+function isLegacyVoucherAccountNumber(accountNumber)
   if type(accountNumber) ~= "string" then
+    return false
+  end
+  -- Neue Kontonummern sind maskierte PANs (enthalten *); Alt: givve.<voucherId>
+  if accountNumber:find("%*", 1, true) then
+    return false
+  end
+  return accountNumber:match("^givve%.[^%s]+$") ~= nil
+end
+
+function voucherIdFromLegacyAccountNumber(accountNumber)
+  if not isLegacyVoucherAccountNumber(accountNumber) then
     return nil
   end
   return accountNumber:match("^givve%.(.+)$")
+end
+
+function findVoucherForAccountNumber(vouchers, accountNumber)
+  if type(vouchers) ~= "table" or type(accountNumber) ~= "string" or accountNumber == "" then
+    return nil
+  end
+  local legacyId = voucherIdFromLegacyAccountNumber(accountNumber)
+  for i = 1, #vouchers do
+    local voucher = vouchers[i]
+    if type(voucher) == "table" then
+      if legacyId and voucher.id == legacyId then
+        return voucher
+      end
+      if type(voucher.number) == "string" and voucher.number == accountNumber then
+        return voucher
+      end
+    end
+  end
+  return nil
+end
+
+-- Erste doppelte Anzeige-PAN in der Liste, sonst nil (kein stilles Map-Overwrite).
+function firstDuplicateVoucherNumber(vouchers)
+  if type(vouchers) ~= "table" then
+    return nil
+  end
+  local seen = {}
+  for i = 1, #vouchers do
+    local voucher = vouchers[i]
+    if type(voucher) == "table" and type(voucher.number) == "string" and voucher.number ~= "" then
+      if seen[voucher.number] then
+        return voucher.number
+      end
+      seen[voucher.number] = true
+    end
+  end
+  return nil
+end
+
+function resolveVoucherIdForAccount(account)
+  local accountNumber = account and account.accountNumber
+  if type(accountNumber) ~= "string" or accountNumber == "" then
+    return nil, "givve Card: Kontonummer fehlt."
+  end
+  local map = session.vouchersByAccountNumber
+  if type(map) == "table" and type(map[accountNumber]) == "string" and map[accountNumber] ~= "" then
+    return map[accountNumber], nil
+  end
+  local legacyId = voucherIdFromLegacyAccountNumber(accountNumber)
+  if legacyId then
+    return legacyId, nil
+  end
+  local vouchers = session.vouchersList
+  if type(vouchers) ~= "table" then
+    local err
+    vouchers, err = fetchAllVouchers(session.accessToken)
+    if not vouchers then
+      return nil, err
+    end
+    session.vouchersList = vouchers
+  end
+  local voucher = findVoucherForAccountNumber(vouchers, accountNumber)
+  if not voucher or type(voucher.id) ~= "string" or voucher.id == "" then
+    return nil, "givve Card: Kein Voucher zur Kontonummer."
+  end
+  return voucher.id, nil
 end
 
 function vouchersListUrl(pageNumber)
@@ -329,25 +393,123 @@ function parseIsoDateTimeToTimestamp(iso)
   })
 end
 
-function transactionNameFromGroup(group)
+function collapseWhitespace(s)
+  if type(s) ~= "string" then
+    return ""
+  end
+  return trim((s:gsub("%s+", " ")))
+end
+
+function categoryIncludes(group, needle)
+  if type(group) ~= "table" or type(group.category) ~= "table" then
+    return false
+  end
+  for i = 1, #group.category do
+    if group.category[i] == needle then
+      return true
+    end
+  end
+  return false
+end
+
+-- Wie MoneyMoney-Builtin „Givve Card“: nur gebuchte ok-Umsätze, keine Info/Status.
+function transactionGroupIsImportable(group)
   if type(group) ~= "table" then
+    return false
+  end
+  if categoryIncludes(group, "informational") or categoryIncludes(group, "status_change") then
+    return false
+  end
+  local status = group.status
+  if type(status) ~= "table" then
+    return false
+  end
+  local hasOk = false
+  for i = 1, #status do
+    if status[i] == "invalid_amount" then
+      return false
+    end
+    if status[i] == "ok" then
+      hasOk = true
+    end
+  end
+  return hasOk
+end
+
+function purposeFromMerchantDescription(merchantName, description)
+  local desc = trim(tostring(description or ""))
+  if desc == "" then
     return nil
   end
-  if type(group.merchant_name) == "string" and trim(group.merchant_name) ~= "" then
-    return trim(group.merchant_name)
-  end
-  if type(group.description) == "string" and trim(group.description) ~= "" then
-    local desc = trim(group.description)
-    if desc:match("^[Ll]oad") then
-      return "Aufladung"
+  if desc:find("\\", 1, true) then
+    local parts = {}
+    for part in desc:gmatch("([^\\]+)") do
+      local p = trim(part)
+      if p ~= "" then
+        parts[#parts + 1] = p
+      end
     end
-    return desc
+    if #parts >= 2 then
+      local startIdx = 1
+      if type(merchantName) == "string" and merchantName ~= "" and parts[1] == merchantName then
+        startIdx = 2
+      end
+      local rest = collapseWhitespace(table.concat(parts, " ", startIdx, #parts))
+      if rest ~= "" then
+        return rest
+      end
+    end
+    return nil
+  end
+  if type(merchantName) == "string" and merchantName ~= "" then
+    if desc:sub(1, #merchantName) == merchantName then
+      local rest = collapseWhitespace(desc:sub(#merchantName + 1))
+      if rest ~= "" then
+        return rest
+      end
+    end
   end
   return nil
 end
 
-function mapTransactionGroup(group)
+-- Builtin: name = "Load : LoadOrder : PLxxxx -", purpose = Hex-IDs danach.
+function splitLoadDescription(description)
+  local desc = trim(tostring(description or ""))
+  if desc == "" then
+    return nil, nil
+  end
+  local namePart, purposePart = desc:match("^(Load%s*:.-P[Ll]%d+%s*%-)%s*(.+)$")
+  if namePart and purposePart then
+    return trim(namePart), collapseWhitespace(purposePart)
+  end
+  return desc, nil
+end
+
+function transactionNameAndPurpose(group)
   if type(group) ~= "table" then
+    return nil, nil
+  end
+  if categoryIncludes(group, "load") or categoryIncludes(group, "balance_adjustment") then
+    if type(group.description) == "string" and trim(group.description) ~= "" then
+      return splitLoadDescription(group.description)
+    end
+    return "Aufladung", nil
+  end
+  local merchant = nil
+  if type(group.merchant_name) == "string" and trim(group.merchant_name) ~= "" then
+    merchant = trim(group.merchant_name)
+  end
+  if merchant then
+    return merchant, purposeFromMerchantDescription(merchant, group.description)
+  end
+  if type(group.description) == "string" and trim(group.description) ~= "" then
+    return collapseWhitespace(group.description), nil
+  end
+  return nil, nil
+end
+
+function mapTransactionGroup(group)
+  if type(group) ~= "table" or not transactionGroupIsImportable(group) then
     return nil
   end
   local amountTable = group.amount
@@ -355,22 +517,36 @@ function mapTransactionGroup(group)
     return nil
   end
   local amount = centsToAmount(amountTable.cents)
-  local name = transactionNameFromGroup(group)
-  local ts = parseIsoDateTimeToTimestamp(group.first_booked_at or group.latest_booked_at)
-  if not name or amount == nil or not ts then
+  local name, purpose = transactionNameAndPurpose(group)
+  local bookingTs = parseIsoDateTimeToTimestamp(group.first_booked_at or group.latest_booked_at)
+  local valueTs = parseIsoDateTimeToTimestamp(group.latest_booked_at or group.first_booked_at) or bookingTs
+  if not name or amount == nil or not bookingTs then
     return nil
   end
   local currency = "EUR"
   if type(amountTable.currency) == "string" and amountTable.currency ~= "" then
     currency = amountTable.currency
   end
-  return {
-    bookingDate = ts,
+  local tx = {
+    bookingDate = bookingTs,
+    valueDate = valueTs,
     name = name,
     amount = amount,
     bookingKey = group.id,
     currency = currency,
+    booked = true,
   }
+  if type(purpose) == "string" and purpose ~= "" then
+    tx.purpose = purpose
+  end
+  if type(group.mcc) == "table" and type(group.mcc.description) == "string" and trim(group.mcc.description) ~= "" then
+    tx.bookingText = trim(group.mcc.description)
+  elseif categoryIncludes(group, "load") then
+    tx.bookingText = "Aufladung"
+  elseif categoryIncludes(group, "purchase") then
+    tx.bookingText = "Kauf"
+  end
+  return tx
 end
 
 function parseTransactionsFromGroupsPayload(payload, sinceTimestamp)
@@ -391,6 +567,48 @@ function parseTransactionsFromGroupsPayload(payload, sinceTimestamp)
     end
   end
   return out
+end
+
+function parseOwnerNameFromMePayload(payload)
+  if type(payload) ~= "table" or type(payload.data) ~= "table" then
+    return nil
+  end
+  local data = payload.data
+  if type(data.name) == "string" and trim(data.name) ~= "" then
+    return trim(data.name)
+  end
+  local first = trim(tostring(data.first_name or ""))
+  local last = trim(tostring(data.last_name or ""))
+  local combined = collapseWhitespace(first .. " " .. last)
+  if combined ~= "" then
+    return combined
+  end
+  return nil
+end
+
+function fetchOwnerName(accessToken)
+  local ok, raw = pcall(function()
+    return apiRequest("GET", CONSTANTS.meUrl, nil, accessToken)
+  end)
+  if not ok or type(raw) ~= "string" then
+    return nil
+  end
+  return parseOwnerNameFromMePayload(parseJson(raw))
+end
+
+function ensureOwnerName()
+  if type(session.ownerName) == "string" and session.ownerName ~= "" then
+    return session.ownerName
+  end
+  if type(session.accessToken) ~= "string" or session.accessToken == "" then
+    return nil
+  end
+  -- Optional: Login/Sync darf nicht scheitern, wenn nur der Inhabername fehlt.
+  local name = fetchOwnerName(session.accessToken)
+  if name then
+    session.ownerName = name
+  end
+  return session.ownerName
 end
 
 function stripNonSerializableConnections(storage)
@@ -515,6 +733,7 @@ function loginWithPassword(email, password, interactive)
     if storage then
       persistTokens(storage, session.accountKey, access, refresh)
     end
+    ensureOwnerName()
     return nil
   end
   if type(response) == "string" and #response > 0 then
@@ -568,6 +787,7 @@ function submitEmailMfaCode(code)
     if storage then
       persistTokens(storage, session.accountKey, access, refresh)
     end
+    ensureOwnerName()
     return nil
   end
   return "givve Card: Unerwartete OTP-Antwort."
@@ -596,6 +816,7 @@ function InitializeSession2(protocol, bankCode, step, credentials, interactive)
       local vouchers = fetchAllVouchers(access)
       if vouchers then
         session.vouchersList = vouchers
+        ensureOwnerName()
         return nil
       end
       session.accessToken = nil
@@ -683,7 +904,12 @@ function ListAccounts(knownAccounts)
   if #vouchers == 0 then
     return "givve Card: Keine Karte (Voucher) im Konto gefunden."
   end
-  local email = session.accountKey or ""
+  local duplicateNumber = firstDuplicateVoucherNumber(vouchers)
+  if duplicateNumber then
+    return "givve Card: Mehrere Karten mit derselben Nummer (" .. duplicateNumber .. ")."
+  end
+  session.vouchersByAccountNumber = {}
+  local owner = ensureOwnerName()
   local accounts = {}
   for i = 1, #vouchers do
     local voucher = vouchers[i]
@@ -691,13 +917,22 @@ function ListAccounts(knownAccounts)
     if balance == nil then
       return "givve Card: Saldo konnte nicht gelesen werden."
     end
-    accounts[#accounts + 1] = {
-      name = accountNameForVoucher(email, voucher),
-      accountNumber = accountNumberForVoucher(voucher),
+    local number = accountNumberForVoucher(voucher)
+    if type(voucher.id) ~= "string" or voucher.id == "" then
+      return "givve Card: Voucher-ID fehlt."
+    end
+    session.vouchersByAccountNumber[number] = voucher.id
+    local account = {
+      name = accountNameForVoucher(voucher, #vouchers),
+      accountNumber = number,
       currency = (type(voucher.currency) == "string" and voucher.currency ~= "" and voucher.currency) or "EUR",
       balance = balance,
       type = AccountTypeCreditCard,
     }
+    if type(owner) == "string" and owner ~= "" then
+      account.owner = owner
+    end
+    accounts[#accounts + 1] = account
   end
   return accounts
 end
@@ -707,9 +942,9 @@ function RefreshAccount(account, since)
     return "givve Card: Session fehlt - bitte anmelden."
   end
   ensureConnection()
-  local voucherId = voucherIdFromAccountNumber(account and account.accountNumber)
-  if type(voucherId) ~= "string" or voucherId == "" then
-    return "givve Card: Kontonummer ohne Voucher-ID."
+  local voucherId, resolveErr = resolveVoucherIdForAccount(account)
+  if not voucherId then
+    return resolveErr
   end
 
   local voucherRaw = apiRequest("GET", CONSTANTS.vouchersUrl .. "/" .. voucherId, nil, session.accessToken)

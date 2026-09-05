@@ -1,1 +1,1 @@
-{"meta":{"total_pages":1,"current_page":1,"page_size":25,"total_entries":1},"data":[{"id":"voucher-test-1","balance":{"cents":4266,"currency":"EUR"},"currency":"EUR","number":"521965******6363","state":"ready"}],"links":{}}
+{"meta":{"total_pages":1,"current_page":1,"page_size":25,"total_entries":2},"data":[{"id":"voucher-test-1","balance":{"cents":4266,"currency":"EUR"},"currency":"EUR","number":"521965******6363","state":"ready"},{"id":"voucher-test-2","balance":{"cents":1000,"currency":"EUR"},"currency":"EUR","number":"521965******9999","state":"ready"}],"links":{}}

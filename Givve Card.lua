@@ -1,16 +1,16 @@
 --
 -- Plugin Homepage: https://github.com/rosch100/Givve-MoneyMoney
--- givve Card — MoneyMoney Web Banking Extension
+-- Givve Card — MoneyMoney Web Banking Extension
 -- Portal: https://card.givve.com  API: https://www.givve.com
 -- Dokumentation: README.md (Hub: https://github.com/rosch100/moneymoney-extensions)
 -- API: https://moneymoney.app/api/webbanking/
 --
 
 WebBanking{
-  version     = 0.91,
+  version     = 1.00,
   url         = "https://card.givve.com",
-  services    = {"givve Card"},
-  description = "givve Card — E-Mail/Passwort + E-Mail-OTP"
+  services    = {"Givve Card"},
+  description = "Givve Card - E-Mail/Passwort + E-Mail-OTP (Prepaid Benefit)"
 }
 
 local CONSTANTS = {
@@ -20,8 +20,9 @@ local CONSTANTS = {
   clientId = "givve-card-web",
   acceptVersion = "v2",
   allowedHosts = { "card.givve.com", "www.givve.com" },
-  serviceName = "givve Card",
+  serviceName = "Givve Card",
   userAgent = "givve Card/8.1.1 (web)",
+  vouchersPageSize = 25,
 }
 
 local CREDENTIAL_REJECTION_MARKERS = {
@@ -63,7 +64,71 @@ function accountNameForEmail(email)
   if e == "" then
     error("givve Card: E-Mail für Kontoname fehlt")
   end
-  return "givve Card (" .. e .. ")"
+  return "Givve Card (" .. e .. ")"
+end
+
+function last4FromVoucher(voucher)
+  if type(voucher) ~= "table" or type(voucher.number) ~= "string" then
+    return nil
+  end
+  return voucher.number:match("(%d%d%d%d)%s*$")
+end
+
+function accountNumberForVoucher(voucher)
+  if type(voucher) ~= "table" or type(voucher.id) ~= "string" or voucher.id == "" then
+    error("givve Card: Voucher-ID für Kontonummer fehlt")
+  end
+  return "givve." .. voucher.id
+end
+
+function accountNameForVoucher(email, voucher)
+  local e = normalizeEmail(email)
+  local last4 = last4FromVoucher(voucher)
+  if last4 and e ~= "" then
+    return "Givve Card ****" .. last4 .. " (" .. e .. ")"
+  end
+  if last4 then
+    return "Givve Card ****" .. last4
+  end
+  if e ~= "" then
+    return "Givve Card (" .. e .. ")"
+  end
+  return "Givve Card"
+end
+
+function voucherIdFromAccountNumber(accountNumber)
+  if type(accountNumber) ~= "string" then
+    return nil
+  end
+  return accountNumber:match("^givve%.(.+)$")
+end
+
+function vouchersListUrl(pageNumber)
+  local page = pageNumber or 1
+  return CONSTANTS.vouchersUrl
+    .. "?page%5Bnumber%5D="
+    .. tostring(page)
+    .. "&page%5Bsize%5D="
+    .. tostring(CONSTANTS.vouchersPageSize)
+end
+
+function vouchersFromListPayload(payload)
+  local out = {}
+  if type(payload) ~= "table" or type(payload.data) ~= "table" then
+    return out
+  end
+  local data = payload.data
+  for i = 1, #data do
+    if type(data[i]) == "table" and type(data[i].id) == "string" and data[i].id ~= "" then
+      out[#out + 1] = data[i]
+    end
+  end
+  return out
+end
+
+function firstVoucherFromListPayload(payload)
+  local list = vouchersFromListPayload(payload)
+  return list[1]
 end
 
 function hostAllowed(urlOrHost)
@@ -328,17 +393,6 @@ function parseTransactionsFromGroupsPayload(payload, sinceTimestamp)
   return out
 end
 
-function firstVoucherFromListPayload(payload)
-  if type(payload) ~= "table" or type(payload.data) ~= "table" then
-    return nil
-  end
-  local data = payload.data
-  if #data >= 1 and type(data[1]) == "table" then
-    return data[1]
-  end
-  return nil
-end
-
 function stripNonSerializableConnections(storage)
   if type(storage) ~= "table" then
     return
@@ -539,10 +593,9 @@ function InitializeSession2(protocol, bankCode, step, credentials, interactive)
     local access = select(1, restoreTokens(storage, email))
     if access then
       session.accessToken = access
-      local probe = apiRequest("GET", CONSTANTS.vouchersUrl, nil, access)
-      local vouchers = parseJson(probe)
-      if vouchers and type(vouchers.data) == "table" then
-        session.vouchersPayload = vouchers
+      local vouchers = fetchAllVouchers(access)
+      if vouchers then
+        session.vouchersList = vouchers
         return nil
       end
       session.accessToken = nil
@@ -581,57 +634,82 @@ function transactionGroupsUrl(voucherId, sinceTimestamp)
   return url
 end
 
+function fetchVouchersPage(accessToken, pageNumber)
+  local raw = apiRequest("GET", vouchersListUrl(pageNumber), nil, accessToken)
+  return parseJson(raw)
+end
+
+function fetchAllVouchers(accessToken)
+  local all = {}
+  local page = 1
+  local totalPages = 1
+  while page <= totalPages do
+    local payload = fetchVouchersPage(accessToken, page)
+    if not payload then
+      return nil, "givve Card: Kontenliste konnte nicht gelesen werden."
+    end
+    local pageVouchers = vouchersFromListPayload(payload)
+    for i = 1, #pageVouchers do
+      all[#all + 1] = pageVouchers[i]
+    end
+    local meta = payload.meta
+    if type(meta) == "table" and type(meta.total_pages) == "number" and meta.total_pages > 0 then
+      totalPages = meta.total_pages
+    else
+      totalPages = page
+    end
+    page = page + 1
+    if page > 50 then
+      return nil, "givve Card: Zu viele Voucher-Seiten."
+    end
+  end
+  return all
+end
+
 function ListAccounts(knownAccounts)
   if type(session.accessToken) ~= "string" or session.accessToken == "" then
-    return "givve Card: Session fehlt — bitte anmelden."
+    return "givve Card: Session fehlt - bitte anmelden."
   end
   ensureConnection()
-  local vouchersPayload = session.vouchersPayload
-  if not vouchersPayload then
-    local raw = apiRequest("GET", CONSTANTS.vouchersUrl, nil, session.accessToken)
-    vouchersPayload = parseJson(raw)
-    if not vouchersPayload then
-      return "givve Card: Kontenliste konnte nicht gelesen werden."
+  local vouchers = session.vouchersList
+  if type(vouchers) ~= "table" then
+    local err
+    vouchers, err = fetchAllVouchers(session.accessToken)
+    if not vouchers then
+      return err
     end
-    session.vouchersPayload = vouchersPayload
+    session.vouchersList = vouchers
   end
-  local voucher = firstVoucherFromListPayload(vouchersPayload)
-  if not voucher then
+  if #vouchers == 0 then
     return "givve Card: Keine Karte (Voucher) im Konto gefunden."
   end
-  local balance = parseBalanceFromVoucher(voucher)
-  if balance == nil then
-    return "givve Card: Saldo konnte nicht gelesen werden."
-  end
-  session.voucherId = voucher.id
   local email = session.accountKey or ""
-  return {
-    {
-      name = accountNameForEmail(email),
-      accountNumber = accountNumberForEmail(email),
-      currency = (voucher.currency or "EUR"),
+  local accounts = {}
+  for i = 1, #vouchers do
+    local voucher = vouchers[i]
+    local balance = parseBalanceFromVoucher(voucher)
+    if balance == nil then
+      return "givve Card: Saldo konnte nicht gelesen werden."
+    end
+    accounts[#accounts + 1] = {
+      name = accountNameForVoucher(email, voucher),
+      accountNumber = accountNumberForVoucher(voucher),
+      currency = (type(voucher.currency) == "string" and voucher.currency ~= "" and voucher.currency) or "EUR",
       balance = balance,
       type = AccountTypeCreditCard,
     }
-  }
+  end
+  return accounts
 end
 
 function RefreshAccount(account, since)
   if type(session.accessToken) ~= "string" or session.accessToken == "" then
-    return "givve Card: Session fehlt — bitte anmelden."
+    return "givve Card: Session fehlt - bitte anmelden."
   end
   ensureConnection()
-  local voucherId = session.voucherId
+  local voucherId = voucherIdFromAccountNumber(account and account.accountNumber)
   if type(voucherId) ~= "string" or voucherId == "" then
-    local rawList = apiRequest("GET", CONSTANTS.vouchersUrl, nil, session.accessToken)
-    local listPayload = parseJson(rawList)
-    local voucher = firstVoucherFromListPayload(listPayload)
-    if not voucher or type(voucher.id) ~= "string" then
-      return "givve Card: Karte für Umsätze nicht gefunden."
-    end
-    voucherId = voucher.id
-    session.voucherId = voucherId
-    session.vouchersPayload = listPayload
+    return "givve Card: Kontonummer ohne Voucher-ID."
   end
 
   local voucherRaw = apiRequest("GET", CONSTANTS.vouchersUrl .. "/" .. voucherId, nil, session.accessToken)

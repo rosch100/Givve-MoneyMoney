@@ -71,8 +71,8 @@ in `docs/LUA-EXTENSIONS.md`.
 - `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `givve Card`
 - Hooks: `InitializeSession2`, `ListAccounts`, `RefreshAccount`, `EndSession`
 - Credentials: `[1]` = E-Mail, `[2]` = Passwort
-- Host-Allowlist: nur `card.givve.com` (plus weitere Hosts nur nach Live-Befund,
-  wenn Login/API sie zwingend braucht — dann explizit in CONSTANTS und Tests)
+- Host-Allowlist: `card.givve.com` (SPA) und `www.givve.com` (JSON-API; Live-HAR
+  2026-09-05). Weitere Hosts nur nach neuem Live-Befund + Tests.
 
 ### Kontomodell
 
@@ -131,10 +131,16 @@ Fehlermeldung; kein stiller Fallback, keine Dummy-Salden.
 
 ### Parsing-Strategie
 
-1. Bevorzugt stabile XHR/JSON-APIs, falls der Browser-Traffic sie zeigt
-2. Sonst gezieltes HTML-Parsing der Portal-Seiten
-3. Parser in testbaren Lua-Funktionen mit Fixtures; UI-Strings nicht hardcoden,
-   wo Selektoren/JSON-Felder robuster sind
+Live-HAR (2026-09-05): **JSON-API first**
+
+1. `POST /api/authorizations` auf `www.givve.com` mit
+   `identifier`/`password`/`client_id=givve-card-web`/`accessors=["voucher_owner"]`;
+   bei `auth_status=otp_required` zweiter POST mit `otp`
+2. Bearer-`access_token`; Header `Accept-Version: v2`, `Origin`/`Referer`
+   `card.givve.com`, User-Agent `givve Card/… (web)`
+3. Saldo: `GET /api/voucher_owners/me/vouchers` → `balance.cents`
+4. Umsätze: `GET …/vouchers/{id}/transaction_groups` → `amount.cents`,
+   `merchant_name`/`description`, `first_booked_at`
 
 ## Fehlerbehandlung
 

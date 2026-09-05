@@ -117,8 +117,8 @@ Branch `feature/mm-crypto-jwe-ready` (noch nicht auf `main`):
 Lokal im Hub-Checkout: `docs/superpowers/specs/2026-09-04-multi-login-localstorage-design.md`.
 Nach Merge nach `main` den GitHub-Link auf `main` umstellen.
 
-- `accountKey` = normalisierte volle E-Mail aus `credentials[1]` (gleiche
-  Normalisierung wie Kontonummer, ohne `givve.`-Prefix)
+- `accountKey` = volle E-Mail aus `credentials[1]`, lowercased und getrimmt
+  (mit `@`; nicht die Kontonummer-Slug-Form)
 - Map-Eintrag: Cookies/Tokens als serialisierbare Strings/Tabellen
 - Reuse nur bei Key-Match; abgelaufene Session → erneuter Login (+ MFA)
 

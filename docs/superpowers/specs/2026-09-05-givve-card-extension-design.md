@@ -66,11 +66,13 @@ in `docs/LUA-EXTENSIONS.md`.
 
 ## MoneyMoney-Vertragsfläche
 
-- `WebBanking`: `services = {"givve"}`, `url = "https://card.givve.com"`,
+- `WebBanking`: `services = {"givve Card"}`, `url = "https://card.givve.com"`,
   `version = 0.91`, Beschreibung kurz auf Deutsch/Englisch
-- `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `givve`
+- `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `givve Card`
 - Hooks: `InitializeSession2`, `ListAccounts`, `RefreshAccount`, `EndSession`
 - Credentials: `[1]` = E-Mail, `[2]` = Passwort
+- Host-Allowlist: nur `card.givve.com` (plus weitere Hosts nur nach Live-Befund,
+  wenn Login/API sie zwingend braucht — dann explizit in CONSTANTS und Tests)
 
 ### Kontomodell
 
@@ -78,8 +80,11 @@ in `docs/LUA-EXTENSIONS.md`.
 - Typ: Prepaid-/Kartenkonto — `AccountTypeCreditCard` (Benefit-Prepaid;
   MoneyMoney hat keinen eigenen Prepaid-Typ)
 - Währung: EUR
-- Kontonummer: `givve.<email-local>` (Teil vor `@`, normalisiert), Name z. B.
-  `givve (<email>)` — Multi-Login-fähig analog Hub-Spec
+- Kontonummer: `givve.<normalized-email>` — volle E-Mail, lowercased, Trim;
+  `@` in der Nummer durch `.` ersetzen (MoneyMoney-tauglich). Beispiel:
+  `user@firma.de` → `givve.user.firma.de`. Vermeidet Kollisionen bei gleicher
+  Local-Part unterschiedlicher Domains.
+- Anzeigename: `givve Card (<email>)` — Multi-Login-fähig analog Hub-Spec
 - Keine Dummy-Umsätze; leere Transaktionsliste ist gültig
 
 ## Architektur
@@ -87,6 +92,7 @@ in `docs/LUA-EXTENSIONS.md`.
 ```text
 InitializeSession2
   → Connection + LocalStorage.connectionsByAccount[accountKey]
+  → Requests nur gegen Allowlist-Hosts (card.givve.com, …)
   → Login E-Mail/Passwort gegen card.givve.com
   → bei MFA: Interactive (E-Mail-Code) → absenden
   → Session-State serialisierbar persistieren (keine Connection-Userdata)
@@ -105,10 +111,14 @@ EndSession
 
 ### Session / Multi-Login
 
-Folgt Hub-Spec
-[multi-login LocalStorage](https://github.com/rosch100/moneymoney-extensions/blob/main/docs/superpowers/specs/2026-09-04-multi-login-localstorage-design.md):
+Folgt Hub-Spec Multi-Login LocalStorage. Die Spec liegt aktuell auf dem Hub-
+Branch `feature/mm-crypto-jwe-ready` (noch nicht auf `main`):
+[multi-login LocalStorage](https://github.com/rosch100/moneymoney-extensions/blob/feature/mm-crypto-jwe-ready/docs/superpowers/specs/2026-09-04-multi-login-localstorage-design.md).
+Lokal im Hub-Checkout: `docs/superpowers/specs/2026-09-04-multi-login-localstorage-design.md`.
+Nach Merge nach `main` den GitHub-Link auf `main` umstellen.
 
-- `accountKey` = E-Mail aus `credentials[1]`
+- `accountKey` = normalisierte volle E-Mail aus `credentials[1]` (gleiche
+  Normalisierung wie Kontonummer, ohne `givve.`-Prefix)
 - Map-Eintrag: Cookies/Tokens als serialisierbare Strings/Tabellen
 - Reuse nur bei Key-Match; abgelaufene Session → erneuter Login (+ MFA)
 

@@ -15,9 +15,7 @@ WebBanking{
 
 local CONSTANTS = {
   baseUrl = "https://card.givve.com",
-  apiBase = "https://www.givve.com",
   authorizationsUrl = "https://www.givve.com/api/authorizations",
-  meUrl = "https://www.givve.com/api/voucher_owners/me",
   vouchersUrl = "https://www.givve.com/api/voucher_owners/me/vouchers",
   clientId = "givve-card-web",
   acceptVersion = "v2",

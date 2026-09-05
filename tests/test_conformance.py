@@ -52,8 +52,12 @@ def main() -> None:
             f"{lua_path}: missing EndSession",
         )
         assert_true(
-            file_contains(lua_path, r'services\s*=\s*\{\s*"givve Card"\s*\}'),
-            f"{lua_path}: service name",
+            file_contains(lua_path, r'services\s*=\s*\{\s*"Givve Card"\s*\}'),
+            f"{lua_path}: service name Givve Card",
+        )
+        assert_true(
+            file_contains(lua_path, r"version\s*=\s*1\.00"),
+            f"{lua_path}: version 1.00",
         )
         assert_true(
             file_contains(lua_path, r"allowedHosts"),
@@ -62,6 +66,10 @@ def main() -> None:
         assert_true(
             file_contains(lua_path, r"www\.givve\.com"),
             f"{lua_path}: API host www.givve.com",
+        )
+        assert_true(
+            lua_path.name == "Givve Card.lua",
+            f"{lua_path.name}: Dateiname muss 'Givve Card.lua' sein (Service-Konvention)",
         )
     print("CONFORMANCE OK")
 

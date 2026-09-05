@@ -170,7 +170,7 @@ function JSON(str)
   }
 end
 
-dofile("Givve.lua")
+dofile("Givve Card.lua")
 
 local function assertEq(actual, expected, label)
   if actual == expected then
@@ -214,11 +214,11 @@ end
 assertEq(normalizeEmail("  User@Firma.DE "), "user@firma.de", "normalizeEmail.trim.lower")
 assertEq(normalizeEmail(""), "", "normalizeEmail.empty")
 assertEq(normalizeEmail(nil), "", "normalizeEmail.nil")
-assertEq(accountNumberForEmail("user@firma.de"), "givve.user.firma.de", "accountNumber")
-assertEq(accountNumberForEmail("  A@B.C "), "givve.a.b.c", "accountNumber.normalize")
-assertEq(accountNameForEmail("user@firma.de"), "givve Card (user@firma.de)", "accountName")
+assertEq(accountNumberForEmail("user@firma.de"), "givve.user.firma.de", "accountNumber.emailLegacy")
+assertEq(accountNameForEmail("user@firma.de"), "Givve Card (user@firma.de)", "accountName.email")
 assertEq(normalizeAccountKey("  User@Firma.DE "), "user@firma.de", "accountKey")
-assertEq(SupportsBank(ProtocolWebBanking, "givve Card"), true, "SupportsBank.ok")
+assertEq(SupportsBank(ProtocolWebBanking, "Givve Card"), true, "SupportsBank.ok")
+assertEq(SupportsBank(ProtocolWebBanking, "givve Card"), false, "SupportsBank.legacyLower")
 assertEq(SupportsBank(ProtocolWebBanking, "Other"), false, "SupportsBank.no")
 
 assertEq(hostAllowed("https://card.givve.com/login"), true, "host.card")
@@ -246,8 +246,19 @@ local authBodyOtp = buildAuthorizationBody("user@example.com", "secret", "123456
 assertEq(authBodyOtp:find('"otp":"123456"', 1, true) ~= nil, true, "authBody.otp")
 
 local vouchers = parseJson(readFixture("vouchers_list.json"))
-local voucher = firstVoucherFromListPayload(vouchers)
+local list = vouchersFromListPayload(vouchers)
+assertEq(#list, 2, "vouchers.count")
+local voucher = list[1]
 assertNear(parseBalanceFromVoucher(voucher), 42.66, "balance")
+assertEq(accountNumberForVoucher(voucher), "givve.voucher-test-1", "accountNumber.voucher")
+assertEq(
+  accountNameForVoucher("user@firma.de", voucher),
+  "Givve Card ****6363 (user@firma.de)",
+  "accountName.voucher"
+)
+assertEq(voucherIdFromAccountNumber("givve.voucher-test-1"), "voucher-test-1", "voucherId.parse")
+assertEq(last4FromVoucher(list[2]), "9999", "last4.second")
+assertNear(parseBalanceFromVoucher(list[2]), 10.00, "balance.second")
 
 local groups = parseJson(readFixture("transaction_groups.json"))
 local txs = parseTransactionsFromGroupsPayload(groups, nil)

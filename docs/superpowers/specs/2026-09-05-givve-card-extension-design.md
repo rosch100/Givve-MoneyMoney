@@ -30,6 +30,9 @@ JSON-API auf `https://www.givve.com`.
 | MFA | E-Mail-OTP via MoneyMoney-Interactive-Challenge (`/login` → `/login/otp`) |
 | Ansatz | Sibling-Scaffold + **JSON-API first** (Live-HAR 2026-09-05) |
 | Kontoart | `AccountTypeCreditCard` (MoneyMoney hat keinen Prepaid-Typ) |
+| Service-Name | `Givve Card` (Title Case; Dateiname `Givve Card.lua`) |
+| Version | `1.00` |
+| Multi-Voucher | Ein MoneyMoney-Konto pro Voucher-ID |
 
 ## Nicht-Ziele (v1)
 
@@ -39,7 +42,6 @@ JSON-API auf `https://www.givve.com`.
 - App-Push-MFA / TOTP (nur E-Mail-OTP)
 - Erstregistrierung mit Token aus dem Kartenanschreiben
 - Gemeinsames Lua-Modul im Hub
-- Mehrere MoneyMoney-Konten bei mehreren Vouchern (v1: erster Voucher)
 
 ## Repository
 
@@ -70,9 +72,10 @@ Hub-Index: Zeile in Hub-`README.md` und Abschnitt in `docs/LUA-EXTENSIONS.md`
 
 ## MoneyMoney-Vertragsfläche
 
-- `WebBanking`: `services = {"givve Card"}`, `url = "https://card.givve.com"`,
-  `version = 0.91`, Beschreibung kurz
-- `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `givve Card`
+- `WebBanking`: `services = {"Givve Card"}`, `url = "https://card.givve.com"`,
+  `version = 1.00`, Beschreibung ASCII (ohne Em-Dash), Dateiname `Givve Card.lua`
+  (Title Case wie Sibling-Konvention; Sichtbarkeit in der Bankauswahl)
+- `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `Givve Card`
 - Hooks: `InitializeSession2`, `ListAccounts`, `RefreshAccount`, `EndSession`
 - Credentials: `[1]` = E-Mail, `[2]` = Passwort; OTP-Folgeschritt: Code in
   `credentials[1]`
@@ -81,13 +84,13 @@ Hub-Index: Zeile in Hub-`README.md` und Abschnitt in `docs/LUA-EXTENSIONS.md`
 
 ### Kontomodell
 
-- Ein Konto pro Login (erster Voucher aus der Liste)
-- Typ: `AccountTypeCreditCard` (Benefit-Prepaid)
+- **Ein MoneyMoney-Konto pro Voucher** (API-Liste, inkl. Pagination)
+- Typ: `AccountTypeCreditCard` (Benefit-Prepaid; kein eigener Prepaid-Typ)
 - Währung: aus Voucher, typisch `EUR`
-- Kontonummer: `givve.<normalized-email>` — volle E-Mail, lowercased, Trim;
-  `@` → `.`. Beispiel: `user@firma.de` → `givve.user.firma.de`
-- Anzeigename: `givve Card (<email>)`
+- Kontonummer: `givve.<voucherId>` (Voucher-ID ist global eindeutig)
+- Anzeigename: `Givve Card ****<last4> (<email>)`
 - Keine Dummy-Umsätze; leere Transaktionsliste ist gültig
+- Multi-Login: `accountKey` = E-Mail; mehrere Portal-Logins = mehrere Bankzugänge
 
 ## Architektur
 
@@ -100,10 +103,11 @@ InitializeSession2
   → access_token/refresh_token serialisierbar persistieren (keine Connection-Userdata)
 
 ListAccounts
-  → GET /api/voucher_owners/me/vouchers
-  → erster Voucher: balance.cents → Saldo; ein Account emitten
+  → GET /api/voucher_owners/me/vouchers (alle Seiten)
+  → je Voucher ein Account (Nummer givve.<id>, Name mit last4 + E-Mail)
 
 RefreshAccount
+  → Voucher-ID aus account.accountNumber
   → GET …/vouchers/{id} (Saldo)
   → GET …/transaction_groups?page[number]=1&page[size]=250&skip_meta_totals=true
     (+ optional filter[latest_booked_at][$gte]=… aus since)
@@ -173,6 +177,5 @@ explizite Fehlermeldung; kein stiller Fallback, keine Dummy-Salden.
 
 ## Offene Punkte
 
-- Mehrere physische Karten/Voucher pro Login: v1 nimmt den **ersten** Voucher;
-  ein Konto pro Karte erst bei Bedarf
-- Live-Smoke in MoneyMoney (OTP-Zustellung, Token-Persistenz über Neustart)
+- Live-Smoke in MoneyMoney (OTP-Zustellung, Token-Persistenz über Neustart,
+  Sichtbarkeit **Givve Card** in der Bankauswahl bei deaktivierter Signaturprüfung)

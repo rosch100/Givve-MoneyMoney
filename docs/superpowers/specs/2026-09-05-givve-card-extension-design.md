@@ -2,7 +2,7 @@
 
 Datum: 2026-09-05
 
-Status: **Approved** (Design), Implementation pending
+Status: **Implementiert** (2026-09-05) — Offline-Tests grün; Live-Smoke in MoneyMoney empfohlen
 
 ## Ziel
 

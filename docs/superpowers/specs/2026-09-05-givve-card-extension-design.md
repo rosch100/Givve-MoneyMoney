@@ -30,8 +30,8 @@ JSON-API auf `https://www.givve.com`.
 | MFA | E-Mail-OTP via MoneyMoney-Interactive-Challenge (`/login` → `/login/otp`) |
 | Ansatz | Sibling-Scaffold + **JSON-API first** (Live-HAR 2026-09-05) |
 | Kontoart | `AccountTypeCreditCard` (MoneyMoney hat keinen Prepaid-Typ) |
-| Service-Name | `Givve Card` (Title Case; Dateiname `Givve Card.lua`) |
-| Version | `1.00` |
+| Service-Name | `Givve Prepaid` (Dateiname `Givve Prepaid.lua` = Service; nicht `Givve Card` — MM-Builtin) |
+| Version | `1.05` |
 | Multi-Voucher | Ein MoneyMoney-Konto pro Voucher-ID |
 
 ## Nicht-Ziele (v1)
@@ -56,7 +56,7 @@ JSON-API auf `https://www.givve.com`.
 
 ```text
 Givve-MoneyMoney/
-  Givve.lua
+  Givve Prepaid.lua
   README.md
   LICENSE
   link_ext.sh
@@ -72,10 +72,10 @@ Hub-Index: Zeile in Hub-`README.md` und Abschnitt in `docs/LUA-EXTENSIONS.md`
 
 ## MoneyMoney-Vertragsfläche
 
-- `WebBanking`: `services = {"Givve Card"}`, `url = "https://card.givve.com"`,
-  `version = 1.00`, Beschreibung ASCII (ohne Em-Dash), Dateiname `Givve Card.lua`
-  (Title Case wie Sibling-Konvention; Sichtbarkeit in der Bankauswahl)
-- `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `Givve Card`
+- `WebBanking`: `services = {"Givve Prepaid"}`, `url = "https://card.givve.com"`,
+  `version = 1.05`, Dateiname `Givve Prepaid.lua` (= Service-Name, Sibling-Konvention)
+  (nicht `Givve Card` — Kollision mit MM-Builtin-Kreditkarte)
+- `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `Givve Prepaid`
 - Hooks: `InitializeSession2`, `ListAccounts`, `RefreshAccount`, `EndSession`
 - Credentials: `[1]` = E-Mail, `[2]` = Passwort; OTP-Folgeschritt: Code in
   `credentials[1]`
@@ -87,8 +87,9 @@ Hub-Index: Zeile in Hub-`README.md` und Abschnitt in `docs/LUA-EXTENSIONS.md`
 - **Ein MoneyMoney-Konto pro Voucher** (API-Liste, inkl. Pagination)
 - Typ: `AccountTypeCreditCard` (Benefit-Prepaid; kein eigener Prepaid-Typ)
 - Währung: aus Voucher, typisch `EUR`
-- Kontonummer: `givve.<voucherId>` (Voucher-ID ist global eindeutig)
-- Anzeigename: `Givve Card ****<last4> (<email>)`
+- Kontonummer: maskierte PAN aus `voucher.number` (z. B. `521965******6363`);
+  Legacy `givve.<voucherId>` bleibt beim Refresh auflösbar
+- Name: `givve` (eine Karte) bzw. `givve ****<last4>` (mehrere)
 - Keine Dummy-Umsätze; leere Transaktionsliste ist gültig
 - Multi-Login: `accountKey` = E-Mail; mehrere Portal-Logins = mehrere Bankzugänge
 
@@ -149,8 +150,13 @@ explizite Fehlermeldung; kein stiller Fallback, keine Dummy-Salden.
 1. Saldo: `GET /api/voucher_owners/me/vouchers` → `data[].balance.cents`
 2. Einzelvoucher: `GET /api/voucher_owners/me/vouchers/{id}`
 3. Umsätze: `GET …/transaction_groups?page[number]=1&page[size]=250&skip_meta_totals=true`
-   → `amount.cents`, `merchant_name` / `description` (Load → „Aufladung“),
-   `first_booked_at`, `id` als `bookingKey`
+   → Mapping analog Builtin „Givve Card“:
+   - `name` = `merchant_name` bzw. Load-Titel (`Load : LoadOrder : PLxxxx -`)
+   - `purpose` = Adressrest aus `description` bzw. Hex-IDs nach dem Load-Titel
+   - `bookingDate` / `valueDate` aus `first_booked_at` / `latest_booked_at`
+   - `booked = true`; optional `bookingText` aus MCC/Kategorie
+   - Filter: kein Import bei `informational` / `status_change` / `invalid_amount`
+4. Inhaber: `GET /api/voucher_owners/me` → `data.name` als Account-`owner`
 
 ## Fehlerbehandlung
 
@@ -177,5 +183,5 @@ explizite Fehlermeldung; kein stiller Fallback, keine Dummy-Salden.
 
 ## Offene Punkte
 
-- Live-Smoke in MoneyMoney (OTP-Zustellung, Token-Persistenz über Neustart,
-  Sichtbarkeit **Givve Card** in der Bankauswahl bei deaktivierter Signaturprüfung)
+- Live-Smoke in MoneyMoney (OTP-Zustellung, Token-Persistenz über Neustart;
+  Bankauswahl: **Konto → Konto hinzufügen → Andere → Givve Prepaid**)

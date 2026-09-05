@@ -52,12 +52,12 @@ def main() -> None:
             f"{lua_path}: missing EndSession",
         )
         assert_true(
-            file_contains(lua_path, r'services\s*=\s*\{\s*"Givve Card"\s*\}'),
-            f"{lua_path}: service name Givve Card",
+            file_contains(lua_path, r'services\s*=\s*\{\s*"Givve Prepaid"\s*\}'),
+            f"{lua_path}: service name Givve Prepaid (nicht 'Givve Card' — Kollision mit MM-Builtin)",
         )
         assert_true(
-            file_contains(lua_path, r"version\s*=\s*1\.00"),
-            f"{lua_path}: version 1.00",
+            file_contains(lua_path, r"version\s*=\s*1\.05"),
+            f"{lua_path}: version 1.05",
         )
         assert_true(
             file_contains(lua_path, r"allowedHosts"),
@@ -68,8 +68,8 @@ def main() -> None:
             f"{lua_path}: API host www.givve.com",
         )
         assert_true(
-            lua_path.name == "Givve Card.lua",
-            f"{lua_path.name}: Dateiname muss 'Givve Card.lua' sein (Service-Konvention)",
+            lua_path.name == "Givve Prepaid.lua",
+            f"{lua_path.name}: Dateiname muss 'Givve Prepaid.lua' sein (= Service-Name)",
         )
     print("CONFORMANCE OK")
 

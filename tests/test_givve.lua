@@ -170,7 +170,7 @@ function JSON(str)
   }
 end
 
-dofile("Givve Card.lua")
+dofile("Givve Prepaid.lua")
 
 local function assertEq(actual, expected, label)
   if actual == expected then
@@ -214,10 +214,9 @@ end
 assertEq(normalizeEmail("  User@Firma.DE "), "user@firma.de", "normalizeEmail.trim.lower")
 assertEq(normalizeEmail(""), "", "normalizeEmail.empty")
 assertEq(normalizeEmail(nil), "", "normalizeEmail.nil")
-assertEq(accountNumberForEmail("user@firma.de"), "givve.user.firma.de", "accountNumber.emailLegacy")
-assertEq(accountNameForEmail("user@firma.de"), "Givve Card (user@firma.de)", "accountName.email")
 assertEq(normalizeAccountKey("  User@Firma.DE "), "user@firma.de", "accountKey")
-assertEq(SupportsBank(ProtocolWebBanking, "Givve Card"), true, "SupportsBank.ok")
+assertEq(SupportsBank(ProtocolWebBanking, "Givve Prepaid"), true, "SupportsBank.ok")
+assertEq(SupportsBank(ProtocolWebBanking, "Givve Card"), false, "SupportsBank.builtinCollision")
 assertEq(SupportsBank(ProtocolWebBanking, "givve Card"), false, "SupportsBank.legacyLower")
 assertEq(SupportsBank(ProtocolWebBanking, "Other"), false, "SupportsBank.no")
 
@@ -250,24 +249,59 @@ local list = vouchersFromListPayload(vouchers)
 assertEq(#list, 2, "vouchers.count")
 local voucher = list[1]
 assertNear(parseBalanceFromVoucher(voucher), 42.66, "balance")
-assertEq(accountNumberForVoucher(voucher), "givve.voucher-test-1", "accountNumber.voucher")
+assertEq(accountNumberForVoucher(voucher), "521965******6363", "accountNumber.voucher")
+assertEq(accountNameForVoucher(voucher, 1), "givve", "accountName.single")
+assertEq(accountNameForVoucher(voucher, 2), "givve ****6363", "accountName.multi")
+assertEq(isLegacyVoucherAccountNumber("givve.690de7f35968df76c8af5168"), true, "legacy.hex")
+assertEq(isLegacyVoucherAccountNumber("521965******6363"), false, "legacy.pan")
+assertEq(voucherIdFromLegacyAccountNumber("givve.voucher-test-1"), "voucher-test-1", "legacy.parse")
+assertEq(findVoucherForAccountNumber(list, "521965******6363").id, "voucher-test-1", "find.byPan")
+assertEq(findVoucherForAccountNumber(list, "givve.voucher-test-2").id, "voucher-test-2", "find.byLegacy")
+assertEq(firstDuplicateVoucherNumber(list), nil, "dup.none")
 assertEq(
-  accountNameForVoucher("user@firma.de", voucher),
-  "Givve Card ****6363 (user@firma.de)",
-  "accountName.voucher"
+  firstDuplicateVoucherNumber({
+    { id = "a", number = "521965******6363" },
+    { id = "b", number = "521965******6363" },
+  }),
+  "521965******6363",
+  "dup.samePan"
 )
-assertEq(voucherIdFromAccountNumber("givve.voucher-test-1"), "voucher-test-1", "voucherId.parse")
 assertEq(last4FromVoucher(list[2]), "9999", "last4.second")
 assertNear(parseBalanceFromVoucher(list[2]), 10.00, "balance.second")
+assertEq(accountNumberForVoucher(list[2]), "521965******9999", "accountNumber.second")
+assertEq(accountNameForVoucher(list[2], 2), "givve ****9999", "accountName.second")
 
 local groups = parseJson(readFixture("transaction_groups.json"))
 local txs = parseTransactionsFromGroupsPayload(groups, nil)
-assertEq(#txs, 2, "tx.count")
+assertEq(#txs, 3, "tx.count")
 assertEq(txs[1].name, "REWE Filialen Voll", "tx1.name")
+assertEq(txs[1].purpose, "Muenchen DEU", "tx1.purpose")
 assertNear(txs[1].amount, -53.30, "tx1.amount")
 assertEq(txs[1].bookingKey, "tx-purchase-1", "tx1.key")
-assertEq(txs[2].name, "Aufladung", "tx2.name")
-assertNear(txs[2].amount, 50.00, "tx2.amount")
+assertEq(txs[1].booked, true, "tx1.booked")
+assertEq(txs[1].valueDate ~= nil, true, "tx1.valueDate")
+assertEq(txs[1].bookingText, "Grocery Stores, Supermarkets", "tx1.bookingText")
+assertEq(txs[2].name, "REWE Filialen Voll", "tx2.name")
+assertEq(txs[2].purpose, "Falkenstr. 9 Muenchen 81541 DEU", "tx2.purpose")
+assertNear(txs[2].amount, -33.78, "tx2.amount")
+assertEq(txs[2].bookingDate ~= txs[2].valueDate, true, "tx2.datesDiffer")
+assertEq(txs[3].name, "Load : LoadOrder : PL1846238 -", "tx3.name")
+assertEq(txs[3].purpose, "6a8bb0e567fbbf287caaad9e - 6a8bb0e567fbbf287caaada0", "tx3.purpose")
+assertNear(txs[3].amount, 50.00, "tx3.amount")
+assertEq(txs[3].bookingText, "Aufladung", "tx3.bookingText")
+
+assertEq(purposeFromMerchantDescription("REWE Filialen Voll", "REWE Filialen Voll     Muenchen      DEU"), "Muenchen DEU", "purpose.space")
+assertEq(
+  purposeFromMerchantDescription("REWE Filialen Voll", "REWE Filialen Voll\\Falkenstr. 9\\Muenchen\\81541        DEU"),
+  "Falkenstr. 9 Muenchen 81541 DEU",
+  "purpose.backslash"
+)
+local loadName, loadPurpose = splitLoadDescription("Load : LoadOrder : PL1846238 - abc - def")
+assertEq(loadName, "Load : LoadOrder : PL1846238 -", "load.split.name")
+assertEq(loadPurpose, "abc - def", "load.split.purpose")
+
+local ownerMe = parseJson(readFixture("voucher_owner_me.json"))
+assertEq(parseOwnerNameFromMePayload(ownerMe), "Test Owner", "owner.name")
 
 local empty = parseTransactionsFromGroupsPayload({ data = {} }, nil)
 assertEq(#empty, 0, "tx.empty")

@@ -8,14 +8,16 @@ Status: **Implementiert** (2026-09-05) — Offline-Tests grün; Live-Smoke in Mo
 
 Eigenes Repository und MoneyMoney-Web-Banking-Extension für das
 **givve Card Karteninhaber-Portal** (`https://card.givve.com`): Login mit
-E-Mail/Passwort, E-Mail-MFA, Saldo und Umsätze in MoneyMoney.
+E-Mail/Passwort, E-Mail-OTP, Saldo und Umsätze in MoneyMoney über die
+JSON-API auf `https://www.givve.com`.
 
 ## Kontext
 
 - Hub: [moneymoney-extensions](https://github.com/rosch100/moneymoney-extensions)
 - Sibling-Muster: `*-MoneyMoney` als Nested-Git-Repos unter dem Hub,
   Remote unter `rosch100` auf GitHub
-- Portal: `https://card.givve.com/login` (offizielle Cardholder-URL laut givve)
+- Portal (SPA): `https://card.givve.com` (Flutter Web, z. B. Version 8.1.1)
+- API: `https://www.givve.com/api/…`
 - Kein Business-/Admin-Portal in v1
 
 ## Entscheidungen (bestätigt)
@@ -23,19 +25,21 @@ E-Mail/Passwort, E-Mail-MFA, Saldo und Umsätze in MoneyMoney.
 | Thema | Entscheidung |
 | --- | --- |
 | Lieferumfang | Scaffold + Design/Implementierung in derselben Session-Kette |
-| Auth | Username/Passwort direkt im Plugin (kein Cookie-Import in v1) |
+| Auth | E-Mail/Passwort direkt im Plugin (kein Cookie-Import in v1) |
 | Scope | Karteninhaber: eine Prepaid-/Benefit-Karte, Saldo + Umsätze |
-| MFA | Erwartet; Typ E-Mail-Code via MoneyMoney-Interactive-Challenge |
-| Ansatz | Sibling-Scaffold + Portal-Login; HTML und/oder XHR, was der Live-Lauf liefert |
+| MFA | E-Mail-OTP via MoneyMoney-Interactive-Challenge (`/login` → `/login/otp`) |
+| Ansatz | Sibling-Scaffold + **JSON-API first** (Live-HAR 2026-09-05) |
+| Kontoart | `AccountTypeCreditCard` (MoneyMoney hat keinen Prepaid-Typ) |
 
 ## Nicht-Ziele (v1)
 
 - givve Business-/Admin-Portal
 - Kartenaktivierung, PIN-Anzeige, Sperren/Entsperren
 - Cookie-Import (`COOKIE:…`)
-- App-Push-MFA / TOTP (nur E-Mail-Code)
+- App-Push-MFA / TOTP (nur E-Mail-OTP)
 - Erstregistrierung mit Token aus dem Kartenanschreiben
 - Gemeinsames Lua-Modul im Hub
+- Mehrere MoneyMoney-Konten bei mehreren Vouchern (v1: erster Voucher)
 
 ## Repository
 
@@ -57,34 +61,32 @@ Givve-MoneyMoney/
   tests/
     test_conformance.py
     test_givve.lua
-    fixtures/          # HTML/JSON-Snippets, keine Credentials
-  docs/superpowers/    # Pläne nach writing-plans; Spec-Spiegel optional
+    fixtures/          # JSON-Snippets, keine Credentials
+  docs/superpowers/
 ```
 
-Hub-Updates nach Repo-Create: Zeile in Hub-`README.md`-Tabelle und Kurzabschnitt
-in `docs/LUA-EXTENSIONS.md`.
+Hub-Index: Zeile in Hub-`README.md` und Abschnitt in `docs/LUA-EXTENSIONS.md`
+(Branch `docs/givve-extension-index`); `.gitignore` listet `/Givve-MoneyMoney/`.
 
 ## MoneyMoney-Vertragsfläche
 
 - `WebBanking`: `services = {"givve Card"}`, `url = "https://card.givve.com"`,
-  `version = 0.91`, Beschreibung kurz auf Deutsch/Englisch
+  `version = 0.91`, Beschreibung kurz
 - `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `givve Card`
 - Hooks: `InitializeSession2`, `ListAccounts`, `RefreshAccount`, `EndSession`
-- Credentials: `[1]` = E-Mail, `[2]` = Passwort
-- Host-Allowlist: `card.givve.com` (SPA) und `www.givve.com` (JSON-API; Live-HAR
-  2026-09-05). Weitere Hosts nur nach neuem Live-Befund + Tests.
+- Credentials: `[1]` = E-Mail, `[2]` = Passwort; OTP-Folgeschritt: Code in
+  `credentials[1]`
+- Host-Allowlist: `card.givve.com` (SPA Origin/Referer) und `www.givve.com`
+  (API). Weitere Hosts nur nach neuem Live-Befund + Tests.
 
 ### Kontomodell
 
-- Ein Konto pro Login
-- Typ: Prepaid-/Kartenkonto — `AccountTypeCreditCard` (Benefit-Prepaid;
-  MoneyMoney hat keinen eigenen Prepaid-Typ)
-- Währung: EUR
+- Ein Konto pro Login (erster Voucher aus der Liste)
+- Typ: `AccountTypeCreditCard` (Benefit-Prepaid)
+- Währung: aus Voucher, typisch `EUR`
 - Kontonummer: `givve.<normalized-email>` — volle E-Mail, lowercased, Trim;
-  `@` in der Nummer durch `.` ersetzen (MoneyMoney-tauglich). Beispiel:
-  `user@firma.de` → `givve.user.firma.de`. Vermeidet Kollisionen bei gleicher
-  Local-Part unterschiedlicher Domains.
-- Anzeigename: `givve Card (<email>)` — Multi-Login-fähig analog Hub-Spec
+  `@` → `.`. Beispiel: `user@firma.de` → `givve.user.firma.de`
+- Anzeigename: `givve Card (<email>)`
 - Keine Dummy-Umsätze; leere Transaktionsliste ist gültig
 
 ## Architektur
@@ -92,21 +94,23 @@ in `docs/LUA-EXTENSIONS.md`.
 ```text
 InitializeSession2
   → Connection + LocalStorage.connectionsByAccount[accountKey]
-  → Requests nur gegen Allowlist-Hosts (card.givve.com, …)
-  → Login E-Mail/Passwort gegen card.givve.com
-  → bei MFA: Interactive (E-Mail-Code) → absenden
-  → Session-State serialisierbar persistieren (keine Connection-Userdata)
+  → optional Token-Reuse (probe GET /vouchers)
+  → sonst POST /api/authorizations (identifier/password)
+  → bei auth_status=otp_required: Interactive → POST inkl. otp
+  → access_token/refresh_token serialisierbar persistieren (keine Connection-Userdata)
 
 ListAccounts
-  → Home/Übersicht: Saldo, Anzeigename, ggf. last4
-  → ein Account emitten
+  → GET /api/voucher_owners/me/vouchers
+  → erster Voucher: balance.cents → Saldo; ein Account emitten
 
 RefreshAccount
-  → Umsätze seit `since` (HTML und/oder XHR)
-  → Mapping Datum, Betrag (Ausgaben negativ), Name, optionale Booking-ID
+  → GET …/vouchers/{id} (Saldo)
+  → GET …/transaction_groups?page[number]=1&page[size]=250&skip_meta_totals=true
+    (+ optional filter[latest_booked_at][$gte]=… aus since)
+  → Mapping Datum, Betrag (API-Cents/100, Ausgaben negativ), Name, bookingKey
 
 EndSession
-  → bei persistierter Map keinen Remote-Logout; Bucket behalten
+  → pending Password/OTP-State löschen; Token-Map behalten; kein Remote-Logout
 ```
 
 ### Session / Multi-Login
@@ -119,56 +123,56 @@ Nach Merge nach `main` den GitHub-Link auf `main` umstellen.
 
 - `accountKey` = volle E-Mail aus `credentials[1]`, lowercased und getrimmt
   (mit `@`; nicht die Kontonummer-Slug-Form)
-- Map-Eintrag: Cookies/Tokens als serialisierbare Strings/Tabellen
-- Reuse nur bei Key-Match; abgelaufene Session → erneuter Login (+ MFA)
+- Map-Eintrag: `accessToken`, `refreshToken` (Strings); zusätzlich flache
+  Spiegel-Felder für Legacy-Debug
+- Reuse nur bei Key-Match; abgelaufenes Token → erneuter Login (+ OTP)
 
-### Auth-Details (Live nachziehen)
+### Auth (Live-HAR 2026-09-05)
 
-Exakte Form-Felder, CSRF, MFA-Endpunkte und Response-Marker werden beim
-ersten Live-Login gegen `card.givve.com` festgenagelt — nicht geraten.
-Fehlerhafte Credentials: Credential-Rejection-Marker; Netzwerk/Parse: explizite
-Fehlermeldung; kein stiller Fallback, keine Dummy-Salden.
+| Schritt | Request |
+| --- | --- |
+| Login | `POST https://www.givve.com/api/authorizations` |
+| Body | `{"identifier":"<email>","password":"…","accessors":["voucher_owner"],"client_id":"givve-card-web"}` |
+| OTP nötig | HTTP 202, `data.auth_status = "otp_required"` |
+| OTP | gleicher Endpoint + `"otp":"<code>"` → 201, `auth_status=authenticated`, `access_token`, `refresh_token` |
+| Header danach | `Authorization: Bearer …`, `Accept-Version: v2`, `Content-Type: application/json`, `Origin`/`Referer` `https://card.givve.com`, `User-Agent: givve Card/8.1.1 (web)` |
 
-### Parsing-Strategie
+Fehlerhafte Credentials: Credential-Rejection / `LoginFailed`; Netzwerk/Parse:
+explizite Fehlermeldung; kein stiller Fallback, keine Dummy-Salden.
 
-Live-HAR (2026-09-05): **JSON-API first**
+### Daten-API
 
-1. `POST /api/authorizations` auf `www.givve.com` mit
-   `identifier`/`password`/`client_id=givve-card-web`/`accessors=["voucher_owner"]`;
-   bei `auth_status=otp_required` zweiter POST mit `otp`
-2. Bearer-`access_token`; Header `Accept-Version: v2`, `Origin`/`Referer`
-   `card.givve.com`, User-Agent `givve Card/… (web)`
-3. Saldo: `GET /api/voucher_owners/me/vouchers` → `balance.cents`
-4. Umsätze: `GET …/vouchers/{id}/transaction_groups` → `amount.cents`,
-   `merchant_name`/`description`, `first_booked_at`
+1. Saldo: `GET /api/voucher_owners/me/vouchers` → `data[].balance.cents`
+2. Einzelvoucher: `GET /api/voucher_owners/me/vouchers/{id}`
+3. Umsätze: `GET …/transaction_groups?page[number]=1&page[size]=250&skip_meta_totals=true`
+   → `amount.cents`, `merchant_name` / `description` (Load → „Aufladung“),
+   `first_booked_at`, `id` als `bookingKey`
 
 ## Fehlerbehandlung
 
 | Situation | Verhalten |
 | --- | --- |
-| Falsches Passwort / unbekannte E-Mail | Credential rejection |
-| Falscher MFA-Code | Challenge erneut oder klarer Fehler |
-| Session abgelaufen mid-sync | Re-Login bzw. Fehler melden, kein Fake-Erfolg |
+| Falsches Passwort / unbekannte E-Mail | Credential rejection (`LoginFailed`) |
+| Falscher OTP-Code | Challenge erneut oder klarer Fehler |
+| Abgelaufenes Token (Probe/Sync) | Fehler melden / erneuter Login; kein Fake-Erfolg |
 | Parse/Netzwerk | Fehlerstring an MoneyMoney; kein leerer Erfolg mit 0-Saldo-Lüge |
 
 ## Tests
 
-- `test_conformance.py`: Pflicht-Hooks / WebBanking-Metadaten
-- `test_givve.lua`: Login-Schritt-Erkennung, MFA-Prompt-Pfad, Saldo-/Umsatz-Parser
-  gegen Fixtures
-- Keine echten Secrets in Repo oder Fixtures
+- `test_conformance.py`: Pflicht-Hooks / WebBanking-Metadaten / Allowlist-Host
+- `test_givve.lua`: E-Mail/Kontonummer, Host-Allowlist, Auth-Klassifikation,
+  MFA-Challenge-Tabelle, Auth-Body, Saldo-/Umsatz-Parser, `transaction_groups`-URL
+- Fixtures unter `tests/fixtures/*.json` ohne echte Secrets
 
-## Lieferreihenfolge
+## Lieferstatus
 
-1. Scaffold + GitHub-Repo + diese Spec / Implementation Plan
-2. Stub-`Givve.lua` mit Hooks + Tests grün
-3. Live-Login + E-Mail-MFA verdrahten
-4. Saldo + Umsätze + Hub-Doku
+1. ~~Scaffold + GitHub-Repo + Spec / Plan~~
+2. ~~`Givve.lua` + Tests grün~~
+3. ~~Live-Login + E-Mail-OTP verdrahten~~
+4. ~~Saldo + Umsätze + Hub-Doku (Hub-Branch `docs/givve-extension-index`)~~
 
-## Offene Punkte (nur Live, kein Spec-Blocker)
+## Offene Punkte
 
-- Konkrete Login-/MFA-Request-Formate
-- Ob Umsätze paginiert/API-basiert sind
-- Ob ein Login mehrere physische Karten zeigen kann (v1: trotzdem ein
-  MoneyMoney-Konto oder bewusst erweitern — Default ein Konto; bei mehreren
-  Karten im Portal: eine pro Karte erst nach Live-Befund)
+- Mehrere physische Karten/Voucher pro Login: v1 nimmt den **ersten** Voucher;
+  ein Konto pro Karte erst bei Bedarf
+- Live-Smoke in MoneyMoney (OTP-Zustellung, Token-Persistenz über Neustart)

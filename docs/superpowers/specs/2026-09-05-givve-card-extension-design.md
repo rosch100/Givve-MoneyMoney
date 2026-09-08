@@ -31,7 +31,7 @@ JSON-API auf `https://www.givve.com`.
 | Ansatz | Sibling-Scaffold + **JSON-API first** (Live-HAR 2026-09-05) |
 | Kontoart | `AccountTypeCreditCard` (MoneyMoney hat keinen Prepaid-Typ) |
 | Service-Name | `Givve Prepaid` (Dateiname `Givve Prepaid.lua` = Service; nicht `Givve Card` — MM-Builtin) |
-| Version | `1.05` |
+| Version | `1.00` |
 | Multi-Voucher | Ein MoneyMoney-Konto pro Voucher-ID |
 
 ## Nicht-Ziele (v1)
@@ -73,7 +73,7 @@ Hub-Index: Zeile in Hub-`README.md` und Abschnitt in `docs/LUA-EXTENSIONS.md`
 ## MoneyMoney-Vertragsfläche
 
 - `WebBanking`: `services = {"Givve Prepaid"}`, `url = "https://card.givve.com"`,
-  `version = 1.05`, Dateiname `Givve Prepaid.lua` (= Service-Name, Sibling-Konvention)
+  `version = 1.00`, Dateiname `Givve Prepaid.lua` (= Service-Name, Sibling-Konvention)
   (nicht `Givve Card` — Kollision mit MM-Builtin-Kreditkarte)
 - `SupportsBank`: `ProtocolWebBanking` und BankCode/Service `Givve Prepaid`
 - Hooks: `InitializeSession2`, `ListAccounts`, `RefreshAccount`, `EndSession`

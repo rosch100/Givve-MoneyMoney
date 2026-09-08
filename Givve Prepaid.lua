@@ -10,7 +10,7 @@
 --
 
 WebBanking{
-  version     = 1.05,
+  version     = 1.00,
   url         = "https://card.givve.com",
   services    = {"Givve Prepaid"},
   description = "Givve Prepaid - E-Mail/Passwort + E-Mail-OTP (Benefit-Karte)"

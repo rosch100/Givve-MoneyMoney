@@ -56,8 +56,8 @@ def main() -> None:
             f"{lua_path}: service name Givve Prepaid (nicht 'Givve Card' — Kollision mit MM-Builtin)",
         )
         assert_true(
-            file_contains(lua_path, r"version\s*=\s*1\.05"),
-            f"{lua_path}: version 1.05",
+            file_contains(lua_path, r"version\s*=\s*1\.00"),
+            f"{lua_path}: version 1.00",
         )
         assert_true(
             file_contains(lua_path, r"allowedHosts"),

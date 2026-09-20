@@ -38,6 +38,12 @@ letzten vier Ziffern im Namen.
 Ältere Konten mit anderer Nummernform werden weiter aktualisiert; für die
 maskierte Kartennummer in der Übersicht ggf. Konto neu anlegen.
 
+## Fehler & Ideen
+
+Issues bitte über GitHub melden:
+[Neues Issue](https://github.com/rosch100/Givve-MoneyMoney/issues/new/choose).
+Keine MoneyMoney-Logdateien anhängen — Details stehen im Bug-Formular.
+
 ## Lizenz
 
 MIT — siehe [LICENSE](LICENSE).

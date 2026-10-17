@@ -979,3 +979,5 @@ function EndSession()
   -- Tokens in Map behalten für Multi-Login / Neustart
   connection = nil
 end
+
+-- SIGNATURE: MCwCFFfE99f4qLwmP/cKkesiouwu5zzIAhQZlkHmxRi5z+h8akjFkgmwHRr3gw==

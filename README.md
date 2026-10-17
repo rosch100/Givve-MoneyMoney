@@ -8,7 +8,7 @@ Gemeinsame Infos: https://github.com/rosch100/moneymoney-extensions
 
 ## Installation
 
-Unsignierte Datei:
+Datei (inkl. MoneyMoney Signatur, wie auf moneymoney-app.com):
 [Givve Prepaid.lua](https://raw.githubusercontent.com/rosch100/Givve-MoneyMoney/main/Givve%20Prepaid.lua)
 
 Datei nach
@@ -16,7 +16,7 @@ Datei nach
 **kopieren** (keine Hardlinks — die Sandbox lädt sie oft nicht), oder im Klon
 `./link_ext.sh` ausführen. Danach MoneyMoney neu starten.
 
-Unsignierte Plugins: MoneyMoney-**Beta**, Signaturprüfung unter
+Entwicklungs-Plugins ohne gültige Signatur: MoneyMoney-**Beta**, Signaturprüfung unter
 *MoneyMoney → Einstellungen → Erweiterungen* ausschalten.
 
 ## Einrichten
